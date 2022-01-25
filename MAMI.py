@@ -22,7 +22,7 @@ from models.tokenization_bert import BertTokenizer
 
 import utils
 from dataset.utils import save_result
-from dataset import create_dataset, create_sampler, create_loader, vqa_collate_fn
+from dataset import create_dataset, create_sampler, create_loader
 
 from scheduler import create_scheduler
 from optim import create_optimizer
@@ -41,17 +41,16 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     step_size = 100
     warmup_iterations = warmup_steps*step_size  
     
-    for i,(image, question, answer, weights, n) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
-        image, weights = image.to(device,non_blocking=True), weights.to(device,non_blocking=True)      
-        question_input = tokenizer(question, padding='longest', truncation=True, max_length=25, return_tensors="pt").to(device) 
-        answer_input = tokenizer(answer, padding='longest', return_tensors="pt").to(device) 
+    for i,(image, text, labels) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+        image, labels = image.to(device,non_blocking=True), labels.to(device,non_blocking=True)
+        text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
         
         if epoch>0 or not config['warm_up']:
             alpha = config['alpha']
         else:
             alpha = config['alpha']*min(1,i/len(data_loader))
 
-        loss = model(image, question_input, answer_input, train=True, alpha=alpha, k=n, weights=weights)        
+        loss = model(image, text_input, labels, alpha=alpha, train=True)
         
         optimizer.zero_grad()
         loss.backward()
@@ -75,29 +74,23 @@ def evaluation(model, data_loader, tokenizer, device, config) :
     model.eval()
             
     metric_logger = utils.MetricLogger(delimiter="  ")
-    header = 'Generate VQA test result:'
+
+    header = 'Evaluation:'
     print_freq = 50
-    
-    result = []
-    
-    answer_list = [answer+config['eos'] for answer in data_loader.dataset.answer_list]
-    answer_input = tokenizer(answer_list, padding='longest', return_tensors='pt').to(device)    
-        
-    for n, (image, question, question_id) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):        
-        image = image.to(device,non_blocking=True)             
-        question_input = tokenizer(question, padding='longest', return_tensors="pt").to(device)        
 
-        topk_ids, topk_probs = model(image, question_input, answer_input, train=False, k=config['k_test'])      
-        
-        for ques_id, topk_id, topk_prob in zip(question_id, topk_ids, topk_probs):
-            ques_id = int(ques_id.item())          
-            _, pred = topk_prob.max(dim=0)
-            result.append({"question_id":ques_id, "answer":data_loader.dataset.answer_list[topk_id[pred]]})   
+    for image, text, labels in metric_logger.log_every(data_loader, print_freq, header):
+        image, labels = image.to(device, non_blocking=True), labels.to(device, non_blocking=True)
+        text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
 
-    return result
+        pred_logits = model(image, text_input, train=False)
+        accuracy = (pred_logits.round() == labels).sum() / labels.size(0)
 
+        metric_logger.meters['acc'].update(accuracy.item(), n=image.size(0))
 
-
+    # gather the stats from all processes
+    metric_logger.synchronize_between_processes()
+    print("Averaged stats:", metric_logger.global_avg())
+    return {k: "{:.4f}".format(meter.global_avg) for k, meter in metric_logger.meters.items()}
 
 def main(args, config):
     utils.init_distributed_mode(args)    
@@ -117,20 +110,20 @@ def main(args, config):
     
     
     #### Dataset #### 
-    print("Creating vqa datasets")
-    datasets = create_dataset('vqa', config)   
+    print("Creating mami datasets")
+    datasets = create_dataset('mami', config)
     
     if args.distributed:
         num_tasks = utils.get_world_size()
         global_rank = utils.get_rank()            
-        samplers = create_sampler(datasets, [True, False], num_tasks, global_rank)         
+        samplers = create_sampler(datasets, [True, False, False], num_tasks, global_rank)
     else:
-        samplers = [None, None]
+        samplers = [None, None, None]
     
-    train_loader, test_loader = create_loader(datasets,samplers,
-                                              batch_size=[config['batch_size_train'],config['batch_size_test']],
-                                              num_workers=[4,4],is_trains=[True, False], 
-                                              collate_fns=[vqa_collate_fn,None]) 
+    train_loader, val_loader, test_loader = create_loader(datasets,samplers,
+                                              batch_size=[config['batch_size_train']]+[config['batch_size_test']]*2,
+                                              num_workers=[4,4,4],is_trains=[True, False, False],
+                                              collate_fns=[None, None ,None])
 
     tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
 
@@ -166,12 +159,12 @@ def main(args, config):
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
         model_without_ddp = model.module    
-    
-    sys.exit()
-
 
     print("Start training")
     start_time = time.time()
+
+    best = 0
+    best_epoch = 0
 
     for epoch in range(start_epoch, max_epoch):
         if epoch>0:
@@ -180,44 +173,62 @@ def main(args, config):
         if not args.evaluate:
             if args.distributed:
                 train_loader.sampler.set_epoch(epoch)
+            train_stats = train(model, train_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config)
 
-            train_stats = train(model, train_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config)  
+        val_stats = evaluate(model, val_loader, tokenizer, device, config)
+        test_stats = evaluate(model, test_loader, tokenizer, device, config)
+
+        if utils.is_main_process():
+            if args.evaluate:
+                log_stats = {**{f'val_{k}': v for k, v in val_stats.items()},
+                             **{f'test_{k}': v for k, v in test_stats.items()},
+                             'epoch': epoch,
+                             }
+
+                with open(os.path.join(args.output_dir, "log.txt"), "a") as f:
+                    f.write(json.dumps(log_stats) + "\n")
+            else:
+                log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+                             **{f'val_{k}': v for k, v in val_stats.items()},
+                             **{f'test_{k}': v for k, v in test_stats.items()},
+                             'epoch': epoch,
+                             }
+
+                with open(os.path.join(args.output_dir, "log.txt"), "a") as f:
+                    f.write(json.dumps(log_stats) + "\n")
+
+                # TODO Make sure it's val_stats['f1']
+
+                if float(val_stats['acc']) > best:
+                    save_obj = {
+                        'model': model_without_ddp.state_dict(),
+                        'optimizer': optimizer.state_dict(),
+                        'lr_scheduler': lr_scheduler.state_dict(),
+                        'config': config,
+                        'epoch': epoch,
+                    }
+                    torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_best.pth'))
+                    best = float(val_stats['acc'])
+                    best_epoch = epoch
 
         if args.evaluate:
             break
-            
-        if utils.is_main_process():               
-            log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
-                         'epoch': epoch,
-                        }                
-            with open(os.path.join(args.output_dir, "log.txt"),"a") as f:
-                f.write(json.dumps(log_stats) + "\n")                        
-                         
-            save_obj = {
-                'model': model_without_ddp.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                'lr_scheduler': lr_scheduler.state_dict(),
-                'config': config,
-                'epoch': epoch,
-            }
-            torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_%02d.pth'%epoch))  
-
-        dist.barrier()   
-  
-    vqa_result = evaluation(model, test_loader, tokenizer, device, config)        
-    result_file = save_result(vqa_result, args.result_dir, 'vqa_result_epoch%d'%epoch)
+        dist.barrier()
                      
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str)) 
-    
+
+    if utils.is_main_process():
+        with open(os.path.join(args.output_dir, "log.txt"),"a") as f:
+            f.write("best epoch: %d"%best_epoch)
             
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', default='./configs/VQA.yaml') 
+    parser.add_argument('--config', default='./configs/MAMI.yaml')
     parser.add_argument('--checkpoint', default='') 
-    parser.add_argument('--output_dir', default='output/vqa')
+    parser.add_argument('--output_dir', default='output/mami')
     parser.add_argument('--evaluate', action='store_true')    
     parser.add_argument('--text_encoder', default='bert-base-uncased')
     parser.add_argument('--device', default='cuda')

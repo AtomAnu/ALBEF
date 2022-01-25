@@ -41,7 +41,7 @@ class ALBEF(nn.Module):
             self.momentum = 0.995
 
 
-    def forward(self, image, text, labels, alpha=0, weights=None, train=True):
+    def forward(self, image, text, labels=None, alpha=0, train=True):
 
         image_embeds = self.visual_encoder(image)
         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
@@ -74,7 +74,7 @@ class ALBEF(nn.Module):
                                            labels = labels,
                                            return_dict = True)
 
-            loss = weights * output.loss
+            loss = output.loss
             loss = loss.sum() / image.size(0)
 
             return loss
@@ -84,7 +84,7 @@ class ALBEF(nn.Module):
                                        encoder_hidden_states = image_embeds,
                                        encoder_attention_mask = image_atts,
                                        return_logits = True)
-            return F.softmax(logits,dim=-1)
+            return logits
 
     @torch.no_grad()    
     def copy_params(self):

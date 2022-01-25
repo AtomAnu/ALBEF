@@ -8,6 +8,7 @@ from dataset.nlvr_dataset import nlvr_dataset
 from dataset.ve_dataset import ve_dataset
 from dataset.vqa_dataset import vqa_dataset
 from dataset.grounding_dataset import grounding_dataset
+from dataset.mami_dataset import mami_dataset
 
 from dataset.randaugment import RandomAugment
 
@@ -76,7 +77,11 @@ def create_dataset(dataset, config):
         train_dataset = grounding_dataset(config['train_file'], train_transform, config['image_root'], mode='train')       
         test_dataset = grounding_dataset(config['test_file'], test_transform, config['image_root'], mode='test')             
         return train_dataset, test_dataset    
-    
+    elif dataset=='mami':
+        train_dataset = mami_dataset(config['train_file'], train_transform, config['image_root'], split='train')
+        val_dataset = mami_dataset(config['val_file'], train_transform, config['image_root'], split='val')
+        test_dataset = mami_dataset(config['test_file'], train_transform, config['image_root'], split='test')
+        return train_dataset, val_dataset, test_dataset
 
 def vqa_collate_fn(batch):
     image_list, question_list, answer_list, weight_list, n = [], [], [], [], []

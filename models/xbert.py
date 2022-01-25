@@ -25,7 +25,7 @@ import torch
 from torch import Tensor, device, dtype, nn
 import torch.utils.checkpoint
 from torch import nn
-from torch.nn import CrossEntropyLoss, MSELoss
+from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 import torch.nn.functional as F
 
 from transformers.activations import ACT2FN
@@ -1561,7 +1561,15 @@ class BertForSequenceClassification(BertPreTrainedModel):
 
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        self.classifier = nn.Sequential(
+            nn.Linear(config.hidden_size, config.hidden_size * 2),
+            nn.LayerNorm(config.hidden_size * 2),
+            nn.GELU(),
+            nn.Linear(config.hidden_size * 2, config.num_labels),
+            nn.Sigmoid()
+        )
+
+        self.loss_fct = nn.BCEWithLogitsLoss()
 
         self.init_weights()
 
@@ -1618,13 +1626,7 @@ class BertForSequenceClassification(BertPreTrainedModel):
 
         loss = None
         if labels is not None:
-            if self.num_labels == 1:
-                #  We are doing regression
-                loss_fct = MSELoss()
-                loss = loss_fct(logits.view(-1), labels.view(-1))
-            else:
-                loss_fct = CrossEntropyLoss()
-                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
 
         if soft_labels is not None:
             loss_distill = -torch.sum(F.log_softmax(logits, dim=1)*soft_labels,dim=-1)

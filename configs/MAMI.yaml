@@ -1,0 +1,25 @@
+train_file: ['/data/atom/mami/no_punc2/train.jsonl']
+val_file: ['/data/atom/mami/no_punc2/val.jsonl']
+test_file: ['/data/atom/mami/no_punc2/test.jsonl']
+
+img_root: '/data/atom/mami/TRAINING/'
+
+image_res: 384
+batch_size_train: 32 
+batch_size_test: 16
+
+alpha: 0.4
+distill: True
+warm_up: True
+
+bert_config: 'configs/config_bert.json'
+
+optimizer: {opt: adamW, lr: 2e-5, weight_decay: 0.02}
+schedular: {sched: cosine, lr: 2e-5, epochs: 8, min_lr: 1e-6, decay_rate: 1, warmup_lr: 1e-5, warmup_epochs: 4, cooldown_epochs: 0}
+
+
+
+
+
+
+

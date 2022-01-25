@@ -2,6 +2,7 @@ import os
 import json
 import random
 from PIL import Image
+import torch
 from torch.utils.data import Dataset
 from dataset.utils import pre_question
 import numpy as np
@@ -22,8 +23,6 @@ class mami_dataset(Dataset):
         self.img_root = img_root
         self.max_words = max_words
 
-        # eos
-
     def __len__(self):
         return len(self.ann)
 
@@ -43,4 +42,4 @@ class mami_dataset(Dataset):
         else:
             labels += [1]
 
-        return image, text, labels
+        return image, text, torch.tensor(labels)

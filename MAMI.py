@@ -69,7 +69,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
 
 
 @torch.no_grad()
-def evaluation(model, data_loader, tokenizer, device, config) :
+def evaluate(model, data_loader, tokenizer, device, config):
     # test
     model.eval()
             

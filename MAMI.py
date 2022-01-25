@@ -42,7 +42,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     warmup_iterations = warmup_steps*step_size  
     
     for i,(image, text, labels) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
-        image, labels = image.to(device,non_blocking=True), labels.to(device,non_blocking=True)
+        image, labels = image.to(device,non_blocking=True), torch.tensor(labels).to(device,non_blocking=True)
         text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
         
         if epoch>0 or not config['warm_up']:
@@ -79,7 +79,7 @@ def evaluation(model, data_loader, tokenizer, device, config) :
     print_freq = 50
 
     for image, text, labels in metric_logger.log_every(data_loader, print_freq, header):
-        image, labels = image.to(device, non_blocking=True), labels.to(device, non_blocking=True)
+        image, labels = image.to(device, non_blocking=True), torch.tensor(labels).to(device, non_blocking=True)
         text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
 
         pred_logits = model(image, text_input, train=False)

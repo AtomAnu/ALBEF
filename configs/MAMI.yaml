@@ -2,7 +2,7 @@ train_file: ['/data/atom/mami/no_punc2/train.jsonl']
 val_file: ['/data/atom/mami/no_punc2/val.jsonl']
 test_file: ['/data/atom/mami/no_punc2/test.jsonl']
 
-img_root: '/data/atom/mami/TRAINING/'
+image_root: '/data/atom/mami/TRAINING/'
 
 image_res: 384
 batch_size_train: 32 

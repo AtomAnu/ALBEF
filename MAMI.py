@@ -155,32 +155,7 @@ def main(args, config):
         if not args.evaluate:
             if config['distill']:
                 m_pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder_m.pos_embed'],model.visual_encoder_m)   
-                state_dict['visual_encoder_m.pos_embed'] = m_pos_embed_reshaped 
-
-            print(list(state_dict.keys()))
-            sys.exit()
-            for key in list(state_dict.keys()):
-                if 'bert' in key:
-                    encoder_key = key.replace('bert.','')         
-                    state_dict[encoder_key] = state_dict[key] 
-                # intialize text decoder as multimodal encoder (last 6 layers of model.text_encoder)    
-                if 'text_encoder' in key:                
-                    if 'layer' in key:
-                        encoder_keys = key.split('.')
-                        layer_num = int(encoder_keys[4])
-                        if layer_num<6:
-                            del state_dict[key]  
-                            continue
-                        else:
-                            decoder_layer_num = (layer_num-6)
-                            encoder_keys[4] = str(decoder_layer_num)
-                            encoder_key = '.'.join(encoder_keys)     
-                    else:
-                        encoder_key = key
-                    decoder_key = encoder_key.replace('text_encoder','text_decoder')  
-                    state_dict[decoder_key] = state_dict[key]     
-
-                    del state_dict[key]                
+                state_dict['visual_encoder_m.pos_embed'] = m_pos_embed_reshaped
                 
         msg = model.load_state_dict(state_dict,strict=False)  
         print('load checkpoint from %s'%args.checkpoint)
@@ -192,7 +167,9 @@ def main(args, config):
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
         model_without_ddp = model.module    
     
-    
+    sys.exit()
+
+
     print("Start training")
     start_time = time.time()
 

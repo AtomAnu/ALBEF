@@ -1,3 +1,4 @@
+import sys
 import argparse
 import os
 import ruamel_yaml as yaml
@@ -155,7 +156,9 @@ def main(args, config):
             if config['distill']:
                 m_pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder_m.pos_embed'],model.visual_encoder_m)   
                 state_dict['visual_encoder_m.pos_embed'] = m_pos_embed_reshaped 
-                
+
+            print(list(state_dict.keys()))
+            sys.exit()
             for key in list(state_dict.keys()):
                 if 'bert' in key:
                     encoder_key = key.replace('bert.','')         

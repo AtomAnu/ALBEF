@@ -1630,7 +1630,7 @@ class BertForSequenceClassification(BertPreTrainedModel):
 
         loss = None
         if labels is not None:
-            loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1, self.num_labels))
 
         if soft_labels is not None:
             loss_distill = -torch.sum(F.log_softmax(logits, dim=1)*soft_labels,dim=-1)

@@ -31,7 +31,7 @@ class mami_dataset(Dataset):
 
         ann = self.ann[index]
 
-        image_path = os.path.join(self.img_root, ann['image'])
+        image_path = os.path.join(self.img_root, ann['img'])
         image = Image.open(image_path).convert('RGB')
         image = self.transform(image)
 

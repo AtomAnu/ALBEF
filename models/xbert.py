@@ -1584,6 +1584,9 @@ class BertForSequenceClassification(BertPreTrainedModel):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
+        soft_labels=None,
+        alpha=0,
+        return_logits=False,
     ):
         r"""
         labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size,)`, `optional`):
@@ -1610,6 +1613,9 @@ class BertForSequenceClassification(BertPreTrainedModel):
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
 
+        if return_logits:
+            return logits
+
         loss = None
         if labels is not None:
             if self.num_labels == 1:
@@ -1619,6 +1625,10 @@ class BertForSequenceClassification(BertPreTrainedModel):
             else:
                 loss_fct = CrossEntropyLoss()
                 loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+
+        if soft_labels is not None:
+            loss_distill = -torch.sum(F.log_softmax(logits, dim=1)*soft_labels,dim=-1)
+            loss = (1-alpha)*loss + alpha* loss_distill
 
         if not return_dict:
             output = (logits,) + outputs[2:]

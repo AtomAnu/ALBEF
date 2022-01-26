@@ -155,7 +155,7 @@ def evaluate(model, data_loader, tokenizer, device, config, save_path=None):
 
 def calculate_multilabel_f1(file):
 
-    label_name_list = ['mis','sha','ste','obj','vio']
+    label_name_list = ['sha','ste','obj','vio']
 
     with open(file, 'r') as f:
         lines = f.readlines()

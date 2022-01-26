@@ -9,7 +9,7 @@ import numpy as np
 
 class mami_dataset(Dataset):
 
-    def __init__(self, ann_file, transform, img_root, official_test_img_root, split='train', max_words=50):
+    def __init__(self, ann_file, transform, img_root, split='train', max_words=50):
 
         self.split = split
         self.ann = []
@@ -21,7 +21,6 @@ class mami_dataset(Dataset):
 
         self.transform = transform
         self.img_root = img_root
-        self.official_test_img_root = official_test_img_root
         self.max_words = max_words
 
     def __len__(self):
@@ -31,10 +30,7 @@ class mami_dataset(Dataset):
 
         ann = self.ann[index]
 
-        if self.split == 'off_test':
-            image_path = os.path.join(self.official_test_img_root, ann['img'])
-        else:
-            image_path = os.path.join(self.img_root, ann['img'])
+        image_path = os.path.join(self.img_root, ann['img'])
         image = Image.open(image_path).convert('RGB')
         image = self.transform(image)
 

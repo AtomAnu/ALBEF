@@ -62,9 +62,9 @@ class ALBEF(nn.Module):
                                            encoder_hidden_states = image_embeds,
                                            encoder_attention_mask = image_atts,
                                            labels = labels,
-                                           return_dict = True,)
-                                           # soft_labels = F.softmax(logits_m,dim=-1),
-                                           # alpha = alpha)
+                                           return_dict = True,
+                                           soft_labels = F.softmax(logits_m,dim=-1),
+                                           alpha = alpha)
             else:
 
                 output = self.text_encoder(text.input_ids,
@@ -84,7 +84,7 @@ class ALBEF(nn.Module):
                                        encoder_hidden_states = image_embeds,
                                        encoder_attention_mask = image_atts,
                                        return_logits = True)
-            return self.text_encoder.sigmoid(logits)
+            return logits
 
     @torch.no_grad()    
     def copy_params(self):

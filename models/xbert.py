@@ -1628,14 +1628,14 @@ class BertForSequenceClassification(BertPreTrainedModel):
         logits_sigmoid = self.sigmoid(logits)
 
         if return_logits:
-            return logits
+            return logits_sigmoid
 
         loss = None
         if labels is not None:
             loss = self.loss_fct(logits_sigmoid.view(-1, self.num_labels).float(), labels.view(-1, self.num_labels).float())
 
         if soft_labels is not None:
-            loss_distill = -torch.sum(F.log_softmax(logits, dim=1)*soft_labels,dim=-1)
+            loss_distill = -torch.sum(F.log_softmax(logits_sigmoid, dim=1)*soft_labels,dim=-1)
             loss = (1-alpha)*loss + alpha* loss_distill
 
         if not return_dict:

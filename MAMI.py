@@ -69,7 +69,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
 
 
 @torch.no_grad()
-def evaluate(model, data_loader, tokenizer, device, config):
+def evaluate(model, data_loader, tokenizer, device, config, save_path=None):
     # test
     model.eval()
             
@@ -78,6 +78,10 @@ def evaluate(model, data_loader, tokenizer, device, config):
     header = 'Evaluation:'
     print_freq = 50
 
+    labels_list = []
+    pred_labels_list = []
+    pred_probas_list = []
+
     for image, text, labels in metric_logger.log_every(data_loader, print_freq, header):
         image, labels = image.to(device, non_blocking=True), labels.to(device, non_blocking=True)
         text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
@@ -85,11 +89,43 @@ def evaluate(model, data_loader, tokenizer, device, config):
         pred_logits = model(image, text_input, train=False)
         accuracy = (pred_logits.round() == labels).sum() / labels.size(0)
 
+        labels_list += labels.int().tolist()
+        pred_labels_list += pred_logits.round().int().tolist()
+        pred_probas_list += pred_logits.tolist()
+
         metric_logger.meters['acc'].update(accuracy.item(), n=image.size(0))
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger.global_avg())
+
+    if save_path is not None:
+        with open(save_path, 'w') as out_f:
+            for gold, pred, prob in zip(labels_list, pred_labels_list, pred_probas_list):
+                data = {}
+                data['mis'] = gold[0]
+                data['sha'] = gold[1]
+                data['ste'] = gold[2]
+                data['obj'] = gold[3]
+                data['vio'] = gold[4]
+                data['oth'] = gold[5]
+
+                data['mis_pred'] = pred[0]
+                data['sha_pred'] = pred[1]
+                data['ste_pred'] = pred[2]
+                data['obj_pred'] = pred[3]
+                data['vio_pred'] = pred[4]
+                data['oth_pred'] = pred[5]
+
+                data['mis_prob'] = prob[0]
+                data['sha_prob'] = prob[1]
+                data['ste_prob'] = prob[2]
+                data['obj_prob'] = prob[3]
+                data['vio_prob'] = prob[4]
+                data['oth_prob'] = prob[5]
+
+                out_f.write(json.dumps(data) + '\n')
+
     return {k: "{:.4f}".format(meter.global_avg) for k, meter in metric_logger.meters.items()}
 
 def main(args, config):
@@ -176,7 +212,7 @@ def main(args, config):
             train_stats = train(model, train_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config)
 
         val_stats = evaluate(model, val_loader, tokenizer, device, config)
-        test_stats = evaluate(model, test_loader, tokenizer, device, config)
+        test_stats = evaluate(model, test_loader, tokenizer, device, config, args.save_path)
 
         if utils.is_main_process():
             if args.evaluate:
@@ -236,6 +272,7 @@ if __name__ == '__main__':
     parser.add_argument('--world_size', default=1, type=int, help='number of distributed processes')    
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
     parser.add_argument('--distributed', default=True, type=bool)
+    parser.add_argument('--save_path', default='output/mami/test_pred.jsonl')
     args = parser.parse_args()
 
     config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)

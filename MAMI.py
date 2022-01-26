@@ -128,6 +128,16 @@ def evaluate(model, data_loader, tokenizer, device, config, save_path=None):
 
                 out_f.write(json.dumps(data) + '\n')
 
+        with open('output/mami/test_pred_cxpy.jsonl', 'w') as cxpy_out_f:
+            for gold, pred, prob in zip(labels_list, pred_labels_list, pred_probas_list):
+                data = {}
+                data['input'] = {'bin_label_id': gold[0]}
+                data['pred_conf_threshold'] = 0.5
+                data['pred_score'] = prob[0]
+                data['pred_label_id'] = pred[0]
+
+                cxpy_out_f.write(json.dumps(data) + '\n')
+
         multilabel_f1 = calculate_multilabel_f1(save_path)
         print('Multi-label F1 Score: {}'.format(multilabel_f1))
 
@@ -224,8 +234,6 @@ def official_test_evaluate(model, data_loader, tokenizer, device, config, save_p
     for image_id, image, text, labels in metric_logger.log_every(data_loader, print_freq, header):
         image, labels = image.to(device, non_blocking=True), labels.to(device, non_blocking=True)
         text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
-
-        print(image_id)
 
         pred_logits = model(image, text_input, train=False)
 

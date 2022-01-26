@@ -1566,8 +1566,9 @@ class BertForSequenceClassification(BertPreTrainedModel):
             nn.LayerNorm(config.hidden_size * 2),
             nn.GELU(),
             nn.Linear(config.hidden_size * 2, config.num_labels),
-            nn.Sigmoid()
         )
+
+        self.sigmoid = nn.Sigmoid()
 
         self.loss_fct = nn.BCEWithLogitsLoss()
 
@@ -1624,13 +1625,14 @@ class BertForSequenceClassification(BertPreTrainedModel):
 
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
+        logits_sigmoid = self.sigmoid(logits)
 
         if return_logits:
             return logits
 
         loss = None
         if labels is not None:
-            loss = self.loss_fct(logits.view(-1, self.num_labels).float(), labels.view(-1, self.num_labels).float())
+            loss = self.loss_fct(logits_sigmoid.view(-1, self.num_labels).float(), labels.view(-1, self.num_labels).float())
 
         if soft_labels is not None:
             loss_distill = -torch.sum(F.log_softmax(logits, dim=1)*soft_labels,dim=-1)

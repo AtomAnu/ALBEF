@@ -84,7 +84,7 @@ class ALBEF(nn.Module):
                                        encoder_hidden_states = image_embeds,
                                        encoder_attention_mask = image_atts,
                                        return_logits = True)
-            return logits
+            return self.text_encoder.sigmoid(logits)
 
     @torch.no_grad()    
     def copy_params(self):

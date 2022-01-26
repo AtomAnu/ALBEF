@@ -1,8 +1,10 @@
 train_file: ['/data/atom/mami/no_punc2/train.jsonl']
 val_file: ['/data/atom/mami/no_punc2/val.jsonl']
 test_file: ['/data/atom/mami/no_punc2/test.jsonl']
+official_test_file: ['/data/atom/mami/no_punc2/off_test.jsonl']
 
 image_root: '/data/atom/mami/TRAINING/'
+official_test_image_root: '/data/atom/mami/TESTING/'
 
 image_res: 384
 batch_size_train: 25

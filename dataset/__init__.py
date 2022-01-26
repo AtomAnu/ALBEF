@@ -81,7 +81,8 @@ def create_dataset(dataset, config):
         train_dataset = mami_dataset(config['train_file'], train_transform, config['image_root'], split='train')
         val_dataset = mami_dataset(config['val_file'], train_transform, config['image_root'], split='val')
         test_dataset = mami_dataset(config['test_file'], train_transform, config['image_root'], split='test')
-        return train_dataset, val_dataset, test_dataset
+        off_test_dataset = mami_dataset(config['official_test_file'], train_transform, config['official_test_image_root'], split='off_test')
+        return train_dataset, val_dataset, test_dataset, off_test_dataset
 
 def vqa_collate_fn(batch):
     image_list, question_list, answer_list, weight_list, n = [], [], [], [], []

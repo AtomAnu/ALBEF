@@ -43,7 +43,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     step_size = 100
     warmup_iterations = warmup_steps*step_size  
     
-    for i,(image, text, labels) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for i,(image_id, image, text, labels) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         image, labels = image.to(device,non_blocking=True), labels.to(device,non_blocking=True)
         text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
         
@@ -84,7 +84,7 @@ def evaluate(model, data_loader, tokenizer, device, config, save_path=None):
     pred_labels_list = []
     pred_probas_list = []
 
-    for image, text, labels in metric_logger.log_every(data_loader, print_freq, header):
+    for image_id, image, text, labels in metric_logger.log_every(data_loader, print_freq, header):
         image, labels = image.to(device, non_blocking=True), labels.to(device, non_blocking=True)
         text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
 
@@ -207,6 +207,37 @@ def check_matrix(matrix, gold, pred):
         matrix[1][1] = tmp
   return matrix
 
+
+@torch.no_grad()
+def official_test_evaluate(model, data_loader, tokenizer, device, config, save_path=None):
+    # test
+    model.eval()
+
+    metric_logger = utils.MetricLogger(delimiter="  ")
+
+    header = 'Evaluation:'
+    print_freq = 50
+
+    image_id_list = []
+    pred_labels_list = []
+
+    for image_id, image, text, labels in metric_logger.log_every(data_loader, print_freq, header):
+        image, labels = image.to(device, non_blocking=True), labels.to(device, non_blocking=True)
+        text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
+
+        print(image_id)
+
+        pred_logits = model(image, text_input, train=False)
+
+        image_id_list += image_id
+        pred_labels_list += pred_logits.round().int().tolist()
+
+    if save_path is not None:
+        with open(save_path, 'w') as out_f:
+            for id, pred in zip(image_id_list, pred_labels_list):
+                out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, pred[0], pred[1], pred[2], pred[3], pred[4]))
+
+
 def main(args, config):
     utils.init_distributed_mode(args)    
     
@@ -231,14 +262,14 @@ def main(args, config):
     if args.distributed:
         num_tasks = utils.get_world_size()
         global_rank = utils.get_rank()            
-        samplers = create_sampler(datasets, [True, False, False], num_tasks, global_rank)
+        samplers = create_sampler(datasets, [True, False, False, False], num_tasks, global_rank)
     else:
-        samplers = [None, None, None]
+        samplers = [None, None, None, None]
     
-    train_loader, val_loader, test_loader = create_loader(datasets,samplers,
-                                              batch_size=[config['batch_size_train']]+[config['batch_size_test']]*2,
-                                              num_workers=[4,4,4],is_trains=[True, False, False],
-                                              collate_fns=[None, None ,None])
+    train_loader, val_loader, test_loader, off_test_loader = create_loader(datasets,samplers,
+                                              batch_size=[config['batch_size_train']]+[config['batch_size_test']]*3,
+                                              num_workers=[4,4,4,4],is_trains=[True, False, False, False],
+                                              collate_fns=[None, None, None ,None])
 
     tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
 
@@ -293,6 +324,9 @@ def main(args, config):
         val_stats = evaluate(model, val_loader, tokenizer, device, config)
         test_stats = evaluate(model, test_loader, tokenizer, device, config, args.save_path)
 
+        if args.off_test_evaluate:
+            official_test_evaluate(model, off_test_loader, tokenizer, device, config, 'output/mami/answer.txt')
+
         if utils.is_main_process():
             if args.evaluate:
                 log_stats = {**{f'val_{k}': v for k, v in val_stats.items()},
@@ -345,6 +379,7 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', default='') 
     parser.add_argument('--output_dir', default='output/mami')
     parser.add_argument('--evaluate', action='store_true')    
+    parser.add_argument('--off_test_evaluate', action='store_true')
     parser.add_argument('--text_encoder', default='bert-base-uncased')
     parser.add_argument('--device', default='cuda')
     parser.add_argument('--seed', default=42, type=int)

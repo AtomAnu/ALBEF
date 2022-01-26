@@ -80,6 +80,7 @@ def evaluate(model, data_loader, tokenizer, device, config, save_path=None):
     header = 'Evaluation:'
     print_freq = 50
 
+    image_id_list = []
     labels_list = []
     pred_labels_list = []
     pred_probas_list = []
@@ -91,6 +92,7 @@ def evaluate(model, data_loader, tokenizer, device, config, save_path=None):
         pred_logits = model(image, text_input, train=False)
         accuracy = (pred_logits.round() == labels).sum() / labels.size(0)
 
+        image_id_list += image_id
         labels_list += labels.int().tolist()
         pred_labels_list += pred_logits.round().int().tolist()
         pred_probas_list += pred_logits.tolist()
@@ -127,6 +129,14 @@ def evaluate(model, data_loader, tokenizer, device, config, save_path=None):
                 data['oth_prob'] = prob[5]
 
                 out_f.write(json.dumps(data) + '\n')
+
+        with open('output/mami/internal_test/answer.txt', 'w') as out_f:
+            for id, pred in zip(image_id_list, pred_labels_list):
+                out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, pred[0], pred[1], pred[2], pred[3], pred[4]))
+
+        with open('output/mami/internal_test/answer_prob.txt', 'w') as out_f:
+            for id, prob in zip(image_id_list, pred_probas_list):
+                out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, prob[0], prob[1], prob[2], prob[3], prob[4]))
 
         with open('output/mami/test_pred_cxpy.jsonl', 'w') as cxpy_out_f:
             for gold, pred, prob in zip(labels_list, pred_labels_list, pred_probas_list):

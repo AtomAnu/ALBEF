@@ -8,6 +8,7 @@ import time
 import datetime
 import json
 from pathlib import Path
+import pandas as pd
 
 import torch
 import torch.nn as nn
@@ -26,6 +27,7 @@ from dataset import create_dataset, create_sampler, create_loader
 
 from scheduler import create_scheduler
 from optim import create_optimizer
+from sklearn import metrics
 
 
 def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, scheduler, config):
@@ -126,7 +128,84 @@ def evaluate(model, data_loader, tokenizer, device, config, save_path=None):
 
                 out_f.write(json.dumps(data) + '\n')
 
+        multilabel_f1 = calculate_multilabel_f1(save_path)
+        print('Multi-label F1 Score: {}'.format(multilabel_f1))
+
     return {k: "{:.4f}".format(meter.global_avg) for k, meter in metric_logger.meters.items()}
+
+def calculate_multilabel_f1(file):
+
+    label_name_list = ['mis','sha','ste','obj','vio']
+
+    with open(file, 'r') as f:
+        lines = f.readlines()
+        line_list = [json.loads(line) for line in lines]
+        df = pd.DataFrame(line_list)
+
+        results = []
+        total_occurences = 0
+
+        for name in label_name_list:
+            pred, gold = df['{}_pred'.format(name)].tolist(), df[name].tolist()
+            f1_score = calculate_f1(pred, gold)
+            weight = gold.count(True)
+            total_occurences += weight
+
+            results.append(f1_score * weight)
+
+    return sum(results) / total_occurences
+
+def calculate_f1(pred_values, gold_values):
+    matrix = metrics.confusion_matrix(gold_values, pred_values)
+    matrix = check_matrix(matrix, gold_values, pred_values)
+
+    # positive label
+    if matrix[0][0] == 0:
+        pos_precision = 0.0
+        pos_recall = 0.0
+    else:
+        pos_precision = matrix[0][0] / (matrix[0][0] + matrix[0][1])
+        pos_recall = matrix[0][0] / (matrix[0][0] + matrix[1][0])
+
+    if (pos_precision + pos_recall) != 0:
+        pos_F1 = 2 * (pos_precision * pos_recall) / (pos_precision + pos_recall)
+    else:
+        pos_F1 = 0.0
+
+    # negative label
+    neg_matrix = [[matrix[1][1], matrix[1][0]], [matrix[0][1], matrix[0][0]]]
+
+    if neg_matrix[0][0] == 0:
+        neg_precision = 0.0
+        neg_recall = 0.0
+    else:
+        neg_precision = neg_matrix[0][0] / (neg_matrix[0][0] + neg_matrix[0][1])
+        neg_recall = neg_matrix[0][0] / (neg_matrix[0][0] + neg_matrix[1][0])
+
+    if (neg_precision + neg_recall) != 0:
+        neg_F1 = 2 * (neg_precision * neg_recall) / (neg_precision + neg_recall)
+    else:
+        neg_F1 = 0.0
+
+    f1 = (pos_F1 + neg_F1) / 2
+    return f1
+
+def check_matrix(matrix, gold, pred):
+  """Check matrix dimension."""
+  if matrix.size == 1:
+    tmp = matrix[0][0]
+    matrix = np.zeros((2, 2))
+    if (pred[1] == 0):
+      if gold[1] == 0:  #true negative
+        matrix[0][0] = tmp
+      else:  #falsi negativi
+        matrix[1][0] = tmp
+    else:
+      if gold[1] == 0:  #false positive
+        matrix[0][1] = tmp
+      else:  #true positive
+        matrix[1][1] = tmp
+  return matrix
 
 def main(args, config):
     utils.init_distributed_mode(args)    

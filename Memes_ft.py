@@ -30,7 +30,7 @@ from optim import create_optimizer
 from sklearn import metrics
 
 
-def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, scheduler, config, grad_accum=1):
+def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, scheduler, config):
     # train
     model.train()  
     
@@ -42,8 +42,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     print_freq = 50    
     step_size = 100
     warmup_iterations = warmup_steps*step_size  
-
-    optimizer.zero_grad()
+    
     for i,(image_id, image, text, labels) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         image, labels = image.to(device,non_blocking=True), labels.to(device,non_blocking=True)
         text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
@@ -54,12 +53,10 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
             alpha = config['alpha']*min(1,i/len(data_loader))
 
         loss = model(image, text_input, labels, alpha=alpha, train=True)
-
+        
+        optimizer.zero_grad()
         loss.backward()
-
-        if (i+1)%grad_accum == 0:
-            optimizer.step()
-            optimizer.zero_grad()
+        optimizer.step()    
         
         metric_logger.update(loss=loss.item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
@@ -74,7 +71,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
 
 
 @torch.no_grad()
-def evaluate(model, data_loader, tokenizer, device, config, output_dir=None):
+def evaluate(model, data_loader, tokenizer, device, config):
     # test
     model.eval()
             
@@ -94,10 +91,6 @@ def evaluate(model, data_loader, tokenizer, device, config, output_dir=None):
 
         logits = model(image, text_input, train=False)
 
-        argmax_accuracy = calculate_argmax_accuracy(logits, labels)
-
-        metric_logger.meters['argmax_acc'].update(argmax_accuracy.item(), n=image.size(0))
-
         pred_logits = nn.Sigmoid()(logits)
         accuracy = (pred_logits.round() == labels).sum() / labels.size(0)
 
@@ -111,55 +104,6 @@ def evaluate(model, data_loader, tokenizer, device, config, output_dir=None):
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger.global_avg())
-
-    if output_dir is not None:
-        save_path = os.path.join(output_dir, 'test_pred.jsonl')
-        with open(save_path, 'w') as out_f:
-            for gold, pred, prob in zip(labels_list, pred_labels_list, pred_probas_list):
-                data = {}
-                data['mis'] = gold[0]
-                data['sha'] = gold[1]
-                data['ste'] = gold[2]
-                data['obj'] = gold[3]
-                data['vio'] = gold[4]
-                data['oth'] = gold[5]
-
-                data['mis_pred'] = pred[0]
-                data['sha_pred'] = pred[1]
-                data['ste_pred'] = pred[2]
-                data['obj_pred'] = pred[3]
-                data['vio_pred'] = pred[4]
-                data['oth_pred'] = pred[5]
-
-                data['mis_prob'] = prob[0]
-                data['sha_prob'] = prob[1]
-                data['ste_prob'] = prob[2]
-                data['obj_prob'] = prob[3]
-                data['vio_prob'] = prob[4]
-                data['oth_prob'] = prob[5]
-
-                out_f.write(json.dumps(data) + '\n')
-
-        # with open('output/mami/internal_test/answer.txt', 'w') as out_f:
-        #     for id, pred in zip(image_id_list, pred_labels_list):
-        #         out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, pred[0], pred[1], pred[2], pred[3], pred[4]))
-        #
-        # with open('output/mami/internal_test/answer_prob.txt', 'w') as out_f:
-        #     for id, prob in zip(image_id_list, pred_probas_list):
-        #         out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, prob[0], prob[1], prob[2], prob[3], prob[4]))
-        #
-        # with open('output/mami/test_pred_cxpy.jsonl', 'w') as cxpy_out_f:
-        #     for gold, pred, prob in zip(labels_list, pred_labels_list, pred_probas_list):
-        #         data = {}
-        #         data['input'] = {'bin_label_id': gold[0]}
-        #         data['pred_conf_threshold'] = 0.5
-        #         data['pred_score'] = prob[0]
-        #         data['pred_label_id'] = pred[0]
-        #
-        #         cxpy_out_f.write(json.dumps(data) + '\n')
-
-        mis_f1, multilabel_f1 = calculate_multilabel_f1(save_path)
-        print('Mis F1: {} | Multi-label F1: {}'.format(mis_f1, multilabel_f1))
 
     return {k: "{:.4f}".format(meter.global_avg) for k, meter in metric_logger.meters.items()}
 
@@ -257,97 +201,6 @@ def check_matrix(matrix, gold, pred):
         matrix[1][1] = tmp
   return matrix
 
-
-@torch.no_grad()
-def official_test_evaluate(model, data_loader, tokenizer, device, config, output_dir=None):
-    # test
-    model.eval()
-
-    metric_logger = utils.MetricLogger(delimiter="  ")
-
-    header = 'Evaluation:'
-    print_freq = 50
-
-    image_id_list = []
-    pred_labels_list = []
-    pred_probas_list = []
-
-    for image_id, image, text, labels in metric_logger.log_every(data_loader, print_freq, header):
-        image, labels = image.to(device, non_blocking=True), labels.to(device, non_blocking=True)
-        text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
-
-        logits = model(image, text_input, train=False)
-        pred_logits = nn.Sigmoid()(logits)
-
-        image_id_list += image_id
-        pred_labels_list += pred_logits.round().int().tolist()
-        pred_probas_list += pred_logits.tolist()
-
-    if output_dir is not None:
-        mis, sha, ste, obj, vio = 0, 0, 0, 0, 0
-
-        with open(os.path.join(output_dir, 'answer.txt'), 'w') as out_f:
-            for id, pred in zip(image_id_list, pred_labels_list):
-
-                mis += pred[0]
-                sha += pred[1]
-                ste += pred[2]
-                obj += pred[3]
-                vio += pred[4]
-
-                out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, pred[0], pred[1], pred[2], pred[3], pred[4]))
-
-        print('No tuning')
-
-        print('MIS: {}'.format(mis))
-        print('SHA: {}'.format(sha))
-        print('STE: {}'.format(ste))
-        print('OBJ: {}'.format(obj))
-        print('VIO: {}'.format(vio))
-
-        with open(os.path.join(output_dir, 'answer_prob.txt'), 'w') as out_f:
-            for id, prob in zip(image_id_list, pred_probas_list):
-                out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, prob[0], prob[1], prob[2], prob[3], prob[4]))
-
-        with open(os.path.join(output_dir, 'answer_argmax.txt'), 'w') as out_f:
-            for id, pred, prob in zip(image_id_list, pred_labels_list, pred_probas_list):
-
-                sublabel_pred = pred[1:5]
-                argmax_sublabel_pred = [0] * len(sublabel_pred)
-                argmax_sublabel_pred[np.argmax(sublabel_pred)] = 1
-
-                out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, pred[0], argmax_sublabel_pred[0],
-                                                                    argmax_sublabel_pred[1], argmax_sublabel_pred[2],
-                                                                    argmax_sublabel_pred[3]))
-
-        mis, sha, ste, obj, vio = 0, 0, 0, 0, 0
-
-        with open(os.path.join(output_dir, 'answer_tuned.txt'), 'w') as out_f:
-            for id, pred, prob in zip(image_id_list, pred_labels_list, pred_probas_list):
-
-                pred_mis = int(prob[0] >= 0.8)
-                pred_sha = int(prob[1] >= 0.01)
-                pred_ste = int(prob[2] >= 0.3)
-                pred_obj = int(prob[3] >= 0.3)
-                pred_vio = int(prob[4] >= 0.1)
-
-                mis += pred_mis
-                sha += pred_sha
-                ste += pred_ste
-                obj += pred_obj
-                vio += pred_vio
-
-                out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, pred_mis, pred_sha, pred_ste, pred_obj, pred_vio))
-
-        print('After tuning')
-
-        print('MIS: {}'.format(mis))
-        print('SHA: {}'.format(sha))
-        print('STE: {}'.format(ste))
-        print('OBJ: {}'.format(obj))
-        print('VIO: {}'.format(vio))
-
-
 def main(args, config):
     utils.init_distributed_mode(args)    
     
@@ -366,20 +219,20 @@ def main(args, config):
     
     
     #### Dataset #### 
-    print("Creating mami datasets")
-    datasets = create_dataset('mami', config)
+    print("Creating memes ft datasets")
+    datasets = create_dataset('memes_ft', config)
     
     if args.distributed:
         num_tasks = utils.get_world_size()
         global_rank = utils.get_rank()            
-        samplers = create_sampler(datasets, [True, False, False, False], num_tasks, global_rank)
+        samplers = create_sampler(datasets, [True, False], num_tasks, global_rank)
     else:
-        samplers = [None, None, None, None]
+        samplers = [None, None]
     
-    train_loader, val_loader, test_loader, off_test_loader = create_loader(datasets,samplers,
-                                              batch_size=[config['batch_size_train']]+[config['batch_size_test']]*3,
-                                              num_workers=[4,4,4,4],is_trains=[True, False, False, False],
-                                              collate_fns=[None, None, None ,None])
+    train_loader, val_loader = create_loader(datasets,samplers,
+                                              batch_size=[config['batch_size_train']]+[config['batch_size_test']],
+                                              num_workers=[4,4],is_trains=[True, False],
+                                              collate_fns=[None, None])
 
     tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
 
@@ -432,10 +285,6 @@ def main(args, config):
             train_stats = train(model, train_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config)
 
         val_stats = evaluate(model, val_loader, tokenizer, device, config)
-        test_stats = evaluate(model, test_loader, tokenizer, device, config, args.output_dir)
-
-        if args.off_test_evaluate:
-            official_test_evaluate(model, off_test_loader, tokenizer, device, config, args.output_dir)
 
         if utils.is_main_process():
             if args.evaluate:
@@ -483,18 +332,16 @@ def main(args, config):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', default='./configs/MAMI.yaml')
+    parser.add_argument('--config', default='./configs/Memes_ft.yaml')
     parser.add_argument('--checkpoint', default='') 
-    parser.add_argument('--output_dir', default='output/mami')
-    parser.add_argument('--evaluate', action='store_true')    
-    parser.add_argument('--off_test_evaluate', action='store_true')
+    parser.add_argument('--output_dir', default='output/memes_ft')
+    parser.add_argument('--evaluate', action='store_true')
     parser.add_argument('--text_encoder', default='bert-base-uncased')
     parser.add_argument('--device', default='cuda')
     parser.add_argument('--seed', default=42, type=int)
     parser.add_argument('--world_size', default=1, type=int, help='number of distributed processes')    
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
     parser.add_argument('--distributed', default=True, type=bool)
-    parser.add_argument('--grad_accum', default=1, type=int, help='gradient accumulation step(s)')
     args = parser.parse_args()
 
     config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)

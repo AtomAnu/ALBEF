@@ -155,8 +155,8 @@ def evaluate(model, data_loader, tokenizer, device, config, output_dir=None):
         #
         #         cxpy_out_f.write(json.dumps(data) + '\n')
 
-        multilabel_f1 = calculate_multilabel_f1(save_path)
-        print('Multi-label F1 Score: {}'.format(multilabel_f1))
+        mis_f1, multilabel_f1 = calculate_multilabel_f1(save_path)
+        print('Mis F1: {} | Multi-label F1: {}'.format(mis_f1, multilabel_f1))
 
     return {k: "{:.4f}".format(meter.global_avg) for k, meter in metric_logger.meters.items()}
 
@@ -177,17 +177,20 @@ def calculate_argmax_accuracy(logits, labels):
 
 def calculate_multilabel_f1(file):
 
-    label_name_list = ['sha','ste','obj','vio']
+    sublabel_name_list = ['sha','ste','obj','vio']
 
     with open(file, 'r') as f:
         lines = f.readlines()
         line_list = [json.loads(line) for line in lines]
         df = pd.DataFrame(line_list)
 
+        pred, gold = df['mis_pred'].tolist(), df['mis'].tolist()
+        mis_f1 = calculate_f1(pred, gold)
+
         results = []
         total_occurences = 0
 
-        for name in label_name_list:
+        for name in sublabel_name_list:
             pred, gold = df['{}_pred'.format(name)].tolist(), df[name].tolist()
             f1_score = calculate_f1(pred, gold)
             weight = gold.count(True)
@@ -195,7 +198,9 @@ def calculate_multilabel_f1(file):
 
             results.append(f1_score * weight)
 
-    return sum(results) / total_occurences
+        multilabel_f1 = sum(results) / total_occurences
+
+    return mis_f1, multilabel_f1
 
 def calculate_f1(pred_values, gold_values):
     matrix = metrics.confusion_matrix(gold_values, pred_values)

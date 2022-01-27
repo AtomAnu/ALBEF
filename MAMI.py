@@ -280,19 +280,21 @@ def official_test_evaluate(model, data_loader, tokenizer, device, config, output
         pred_labels_list += pred_logits.round().int().tolist()
         pred_probas_list += pred_logits.tolist()
 
-    mis, sha, ste, obj, vio = 0, 0, 0, 0, 0
-
     if output_dir is not None:
+        mis, sha, ste, obj, vio = 0, 0, 0, 0, 0
+
         with open(os.path.join(output_dir, 'answer.txt'), 'w') as out_f:
             for id, pred in zip(image_id_list, pred_labels_list):
 
-                if pred[0] == 1: mis += 1
-                if pred[1] == 1: sha += 1
-                if pred[2] == 1: ste += 1
-                if pred[3] == 1: obj += 1
-                if pred[4] == 1: vio += 1
+                mis += pred[0]
+                sha += pred[1]
+                ste += pred[2]
+                obj += pred[3]
+                vio += pred[4]
 
                 out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, pred[0], pred[1], pred[2], pred[3], pred[4]))
+
+        print('No tuning')
 
         print('MIS: {}'.format(mis))
         print('SHA: {}'.format(sha))
@@ -314,6 +316,33 @@ def official_test_evaluate(model, data_loader, tokenizer, device, config, output
                 out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, pred[0], argmax_sublabel_pred[0],
                                                                     argmax_sublabel_pred[1], argmax_sublabel_pred[2],
                                                                     argmax_sublabel_pred[3]))
+
+        mis, sha, ste, obj, vio = 0, 0, 0, 0, 0
+
+        with open(os.path.join(output_dir, 'answer_tuned.txt'), 'w') as out_f:
+            for id, pred, prob in zip(image_id_list, pred_labels_list, pred_probas_list):
+
+                pred_mis = int(prob[0] >= 0.8)
+                pred_sha = int(prob[1] >= 0.01)
+                pred_ste = int(prob[2] >= 0.3)
+                pred_obj = int(prob[3] >= 0.3)
+                pred_vio = int(prob[4] >= 0.1)
+
+                mis += pred_mis
+                sha += pred_sha
+                ste += pred_ste
+                obj += pred_obj
+                vio += pred_vio
+
+                out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, pred_mis, pred_sha, pred_ste, pred_obj, pred_vio)
+
+        print('No tuning')
+
+        print('MIS: {}'.format(mis))
+        print('SHA: {}'.format(sha))
+        print('STE: {}'.format(ste))
+        print('OBJ: {}'.format(obj))
+        print('VIO: {}'.format(vio))
 
 
 def main(args, config):

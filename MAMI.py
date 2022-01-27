@@ -89,7 +89,13 @@ def evaluate(model, data_loader, tokenizer, device, config, save_path=None):
         image, labels = image.to(device, non_blocking=True), labels.to(device, non_blocking=True)
         text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
 
-        pred_logits = model(image, text_input, train=False)
+        logits = model(image, text_input, train=False)
+
+        argmax_accuracy = calculate_argmax_accuracy(logits, labels)
+
+        metric_logger.meters['argmax_acc'].update(argmax_accuracy.item(), n=image.size(0))
+
+        pred_logits = model.sigmoid(logits)
         accuracy = (pred_logits.round() == labels).sum() / labels.size(0)
 
         image_id_list += image_id
@@ -152,6 +158,21 @@ def evaluate(model, data_loader, tokenizer, device, config, save_path=None):
         print('Multi-label F1 Score: {}'.format(multilabel_f1))
 
     return {k: "{:.4f}".format(meter.global_avg) for k, meter in metric_logger.meters.items()}
+
+def calculate_argmax_accuracy(logits, labels):
+
+    logits_argmax = logits.argmax(dim=-1).view(-1,1)
+    preds = torch.zeros_like(logits)
+    preds.scatter_(1, logits_argmax, 1)
+
+    assert preds.shape == labels.shape
+
+    scores = preds * labels
+
+    argmax_accuracy = (scores.sum() / labels.shape[0])
+
+    return argmax_accuracy
+
 
 def calculate_multilabel_f1(file):
 
@@ -364,9 +385,7 @@ def main(args, config):
                 with open(os.path.join(args.output_dir, "log.txt"), "a") as f:
                     f.write(json.dumps(log_stats) + "\n")
 
-                # TODO Make sure it's val_stats['f1']
-
-                if float(val_stats['acc']) > best:
+                if float(val_stats['argmax_acc']) > best:
                     save_obj = {
                         'model': model_without_ddp.state_dict(),
                         'optimizer': optimizer.state_dict(),
@@ -375,7 +394,7 @@ def main(args, config):
                         'epoch': epoch,
                     }
                     torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_best.pth'))
-                    best = float(val_stats['acc'])
+                    best = float(val_stats['argmax_acc'])
                     best_epoch = epoch
 
         if args.evaluate:

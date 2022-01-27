@@ -1628,7 +1628,7 @@ class BertForSequenceClassification(BertPreTrainedModel):
         logits_sigmoid = self.sigmoid(logits)
 
         if return_logits:
-            return logits_sigmoid
+            return logits
 
         loss = None
         if labels is not None:

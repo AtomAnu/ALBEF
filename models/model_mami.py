@@ -63,7 +63,7 @@ class ALBEF(nn.Module):
                                            encoder_attention_mask = image_atts,
                                            labels = labels,
                                            return_dict = True,
-                                           soft_labels = F.softmax(logits_m,dim=-1),
+                                           soft_labels = F.softmax(self.text_encoder.sigmoid(logits_m),dim=-1),
                                            alpha = alpha)
             else:
 

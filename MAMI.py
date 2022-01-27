@@ -95,7 +95,7 @@ def evaluate(model, data_loader, tokenizer, device, config, save_path=None):
 
         metric_logger.meters['argmax_acc'].update(argmax_accuracy.item(), n=image.size(0))
 
-        pred_logits = model.text_encoder.sigmoid(logits)
+        pred_logits = nn.Sigmoid()(logits)
         accuracy = (pred_logits.round() == labels).sum() / labels.size(0)
 
         image_id_list += image_id
@@ -266,8 +266,8 @@ def official_test_evaluate(model, data_loader, tokenizer, device, config, save_p
         image, labels = image.to(device, non_blocking=True), labels.to(device, non_blocking=True)
         text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
 
-        pred_logits = model(image, text_input, train=False)
-        pred_logits = model.text_encoder.sigmoid(pred_logits)
+        logits = model(image, text_input, train=False)
+        pred_logits = nn.Sigmoid()(logits)
 
         image_id_list += image_id
         pred_labels_list += pred_logits.round().int().tolist()

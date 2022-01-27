@@ -280,10 +280,25 @@ def official_test_evaluate(model, data_loader, tokenizer, device, config, output
         pred_labels_list += pred_logits.round().int().tolist()
         pred_probas_list += pred_logits.tolist()
 
+    mis, sha, ste, obj, vio = 0, 0, 0, 0, 0
+
     if output_dir is not None:
         with open(os.path.join(output_dir, 'answer.txt'), 'w') as out_f:
             for id, pred in zip(image_id_list, pred_labels_list):
+
+                if pred[0] == 1: mis += 1
+                if pred[1] == 1: sha += 1
+                if pred[2] == 1: ste += 1
+                if pred[3] == 1: obj += 1
+                if pred[4] == 1: vio += 1
+
                 out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, pred[0], pred[1], pred[2], pred[3], pred[4]))
+
+        print('MIS: {}'.format(mis))
+        print('SHA: {}'.format(sha))
+        print('STE: {}'.format(ste))
+        print('OBJ: {}'.format(obj))
+        print('VIO: {}'.format(vio))
 
         with open(os.path.join(output_dir, 'answer_prob.txt'), 'w') as out_f:
             for id, prob in zip(image_id_list, pred_probas_list):

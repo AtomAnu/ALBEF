@@ -336,7 +336,7 @@ def official_test_evaluate(model, data_loader, tokenizer, device, config, output
 
                 out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, pred_mis, pred_sha, pred_ste, pred_obj, pred_vio))
 
-        print('No tuning')
+        print('After tuning')
 
         print('MIS: {}'.format(mis))
         print('SHA: {}'.format(sha))

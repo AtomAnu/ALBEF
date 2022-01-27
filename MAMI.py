@@ -71,7 +71,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
 
 
 @torch.no_grad()
-def evaluate(model, data_loader, tokenizer, device, config, save_path=None):
+def evaluate(model, data_loader, tokenizer, device, config, output_dir=None):
     # test
     model.eval()
             
@@ -109,7 +109,8 @@ def evaluate(model, data_loader, tokenizer, device, config, save_path=None):
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger.global_avg())
 
-    if save_path is not None:
+    if output_dir is not None:
+        save_path = os.path.join(output_dir, 'test_pred.jsonl')
         with open(save_path, 'w') as out_f:
             for gold, pred, prob in zip(labels_list, pred_labels_list, pred_probas_list):
                 data = {}
@@ -250,7 +251,7 @@ def check_matrix(matrix, gold, pred):
 
 
 @torch.no_grad()
-def official_test_evaluate(model, data_loader, tokenizer, device, config, save_path=None):
+def official_test_evaluate(model, data_loader, tokenizer, device, config, output_dir=None):
     # test
     model.eval()
 
@@ -261,6 +262,7 @@ def official_test_evaluate(model, data_loader, tokenizer, device, config, save_p
 
     image_id_list = []
     pred_labels_list = []
+    pred_probas_list = []
 
     for image_id, image, text, labels in metric_logger.log_every(data_loader, print_freq, header):
         image, labels = image.to(device, non_blocking=True), labels.to(device, non_blocking=True)
@@ -271,11 +273,27 @@ def official_test_evaluate(model, data_loader, tokenizer, device, config, save_p
 
         image_id_list += image_id
         pred_labels_list += pred_logits.round().int().tolist()
+        pred_probas_list += pred_logits.tolist()
 
-    if save_path is not None:
-        with open(save_path, 'w') as out_f:
+    if output_dir is not None:
+        with open(os.path.join(output_dir, 'answer.txt'), 'w') as out_f:
             for id, pred in zip(image_id_list, pred_labels_list):
                 out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, pred[0], pred[1], pred[2], pred[3], pred[4]))
+
+        with open(os.path.join(output_dir, 'answer_prob.txt'), 'w') as out_f:
+            for id, prob in zip(image_id_list, pred_probas_list):
+                out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, prob[0], prob[1], prob[2], prob[3], prob[4]))
+
+        with open(os.path.join(output_dir, 'answer_argmax.txt'), 'w') as out_f:
+            for id, pred, prob in zip(image_id_list, pred_labels_list, pred_probas_list):
+
+                sublabel_pred = pred[1:5]
+                argmax_sublabel_pred = [0] * len(sublabel_pred)
+                argmax_sublabel_pred[np.argmax(sublabel_pred)] = 1
+
+                out_f.write('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n'.format(id, pred[0], argmax_sublabel_pred[0],
+                                                                    argmax_sublabel_pred[1], argmax_sublabel_pred[2],
+                                                                    argmax_sublabel_pred[3]))
 
 
 def main(args, config):
@@ -362,10 +380,10 @@ def main(args, config):
             train_stats = train(model, train_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config)
 
         val_stats = evaluate(model, val_loader, tokenizer, device, config)
-        test_stats = evaluate(model, test_loader, tokenizer, device, config, args.save_path)
+        test_stats = evaluate(model, test_loader, tokenizer, device, config, args.output_dir)
 
         if args.off_test_evaluate:
-            official_test_evaluate(model, off_test_loader, tokenizer, device, config, 'output/mami/answer.txt')
+            official_test_evaluate(model, off_test_loader, tokenizer, device, config, args.output_dir)
 
         if utils.is_main_process():
             if args.evaluate:
@@ -424,7 +442,6 @@ if __name__ == '__main__':
     parser.add_argument('--world_size', default=1, type=int, help='number of distributed processes')    
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
     parser.add_argument('--distributed', default=True, type=bool)
-    parser.add_argument('--save_path', default='output/mami/test_pred.jsonl')
     args = parser.parse_args()
 
     config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)

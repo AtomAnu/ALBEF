@@ -267,6 +267,7 @@ def official_test_evaluate(model, data_loader, tokenizer, device, config, save_p
         text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
 
         pred_logits = model(image, text_input, train=False)
+        pred_logits = model.sigmoid(pred_logits)
 
         image_id_list += image_id
         pred_labels_list += pred_logits.round().int().tolist()

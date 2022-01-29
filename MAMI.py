@@ -399,7 +399,7 @@ def main(args, config):
 
         if args.from_memes_ft:
             for key in list(state_dict.keys()):
-                if 'text_encoder.classifier' in key:
+                if 'text_encoder.classifier' in key or 'text_encoder_m.classifier' in key:
                     print(key)
                     del state_dict[key]
         

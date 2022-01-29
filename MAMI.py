@@ -396,6 +396,12 @@ def main(args, config):
     if args.checkpoint:    
         checkpoint = torch.load(args.checkpoint, map_location='cpu') 
         state_dict = checkpoint['model']
+
+        if args.from_memes_ft:
+            for key in list(state_dict.keys()):
+                if 'text_encoder.classifier' in key:
+                    print(key)
+                    def state_dict[key]
         
         # reshape positional embedding to accomodate for image resolution change
         pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder.pos_embed'],model.visual_encoder)         
@@ -495,6 +501,7 @@ if __name__ == '__main__':
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
     parser.add_argument('--distributed', default=True, type=bool)
     parser.add_argument('--grad_accum', default=1, type=int, help='gradient accumulation step(s)')
+    parser.add_argument('--from_memes_ft', action='store_true')
     args = parser.parse_args()
 
     config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)

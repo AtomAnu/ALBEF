@@ -287,7 +287,6 @@ def main(args, config):
         if utils.is_main_process():
             if args.evaluate:
                 log_stats = {**{f'val_{k}': v for k, v in val_stats.items()},
-                             **{f'test_{k}': v for k, v in test_stats.items()},
                              'epoch': epoch,
                              }
 
@@ -296,7 +295,6 @@ def main(args, config):
             else:
                 log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                              **{f'val_{k}': v for k, v in val_stats.items()},
-                             **{f'test_{k}': v for k, v in test_stats.items()},
                              'epoch': epoch,
                              }
 

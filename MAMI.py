@@ -401,7 +401,7 @@ def main(args, config):
             for key in list(state_dict.keys()):
                 if 'text_encoder.classifier' in key:
                     print(key)
-                    def state_dict[key]
+                    del state_dict[key]
         
         # reshape positional embedding to accomodate for image resolution change
         pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder.pos_embed'],model.visual_encoder)         

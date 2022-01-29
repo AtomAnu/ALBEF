@@ -43,7 +43,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     step_size = 100
     warmup_iterations = warmup_steps*step_size  
     
-    for i,(image_id, image, text, labels) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for i,(image, text, labels) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         image, labels = image.to(device,non_blocking=True), labels.to(device,non_blocking=True)
         text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
         
@@ -80,12 +80,11 @@ def evaluate(model, data_loader, tokenizer, device, config):
     header = 'Evaluation:'
     print_freq = 50
 
-    image_id_list = []
     labels_list = []
     pred_labels_list = []
     pred_probas_list = []
 
-    for image_id, image, text, labels in metric_logger.log_every(data_loader, print_freq, header):
+    for image, text, labels in metric_logger.log_every(data_loader, print_freq, header):
         image, labels = image.to(device, non_blocking=True), labels.to(device, non_blocking=True)
         text_input = tokenizer(text, padding='longest', return_tensors="pt").to(device)
 
@@ -94,7 +93,6 @@ def evaluate(model, data_loader, tokenizer, device, config):
         pred_logits = nn.Sigmoid()(logits)
         accuracy = (pred_logits.round() == labels).sum() / labels.size(0)
 
-        image_id_list += image_id
         labels_list += labels.int().tolist()
         pred_labels_list += pred_logits.round().int().tolist()
         pred_probas_list += pred_logits.tolist()
